@@ -1,0 +1,6 @@
+# Herdr writes these into every mod folder on start (the API types for editors).
+mods/*/gpui-kit.d.ts
+mods/*/herdr.d.ts
+mods/*/jsconfig.json
+__pycache__/
+.DS_Store

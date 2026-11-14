@@ -1,0 +1,58 @@
+# Herdr Custom Layout
+
+Herdr's `main` layout with the servers your terminals run listed under the agents (ports from Herdr terminals and running Docker Compose services, click to peek at their output) and each agent's plan usage left in the status bar.
+
+![Herdr Custom Layout](preview.png)
+
+## What you see
+
+Left to right, top to bottom, as Herdr's `main`, except:
+
+- **Servers, under the agent rows** in the Agents block, in the same scroll. A header like the Agents one: "Servers" in `dim` 11.5px medium, the count in `dim` 11px, a ↻ on the right (12px `dim`, `foreground` on hover). 16px above it, 5px below.
+- **A port row**, 8px rounded, 5px vertical padding, `hover` background: Herdr's terminal glyph (`mods/workspace-chrome/terminal.svg`, 14px, `working` color); line one `:3000` semibold `foreground`, then what runs (`python3 http.server`, `node vite`: the process name and its first non-flag argument's last part) in `muted`; line two in `dim` 11px: the terminal's space and tab (`demo-app / 1`) and `local` (bound to loopback only) or `network`.
+- **A Compose project header**: Herdr's layers icon 12px and `project  ~/its/folder` in `dim` 11px (home as `~`; deeper than three parts, `…/` and the last two).
+- **A service row** as a port row, with a 7px dot for the glyph: `ansi2` green running (or healthy), `ansi3` yellow while a health check is still starting, `blocked` unhealthy; line one the service name semibold and its published host ports `:16379` in `muted`; line two `running · healthy · demo-app / 1` (or `· logs` when no terminal runs it).
+- Hovering a row shows `:port ↗` on its right (11px `muted`, `raised` on hover).
+- No servers: "No servers yet. Ports opened from a Herdr terminal and running Docker Compose services show here." in `dim` 12px. A failed scan or a stopped Docker daemon shows its message in `blocked` 11px, one line.
+- Sidebar folded to a rail: under the agents, a divider and one 26px cell per server with its port number, 10.5px `muted`, tooltip naming it.
+- **Usage in the status bar**, right-aligned before the palette hint, a 1px `border` divider between: per agent its program icon (13px, from the program table), name, plan (`max`, `prolite`) in `dim`; then a meter per limit: name in `muted` (`5h`, `Week`, `Fable wk`), a 44×5px bar of what's left (track `raised`, fill `ansi2`, `ansi3` under 50% left, `ansi1` under 20%), `97% left` in `foreground`, the time to reset in `dim` (`4h 32m`, `3d 3h`). A ↻ after the agents. Text 11.8px.
+- The status bar under 1500px wide drops the words (`97%`, no plan, `Codex` alone) and uses 28px bars; under 1150px it drops bars and reset times and colors the percentages instead.
+
+## How it behaves
+
+- Clicking a port row runs `terminal.peek {terminal}` on the terminal the listening process came from: its live output over the tab, with keep-as-tab and close.
+- Clicking a service row peeks at the terminal running `docker compose up` (or `watch`, `start`, `logs`) for that project. With none, it starts `docker compose -p <project> logs -f --tail 200 <service>` in the project folder with `hc run --bg`, labeled `herdr.ports.logs=<project>/<service>`, and peeks at it; the next click finds that live terminal by its label and reuses it.
+- `:port ↗` opens `http://localhost:<port>` with `xdg-open` (`open` on macOS, `start` on Windows) without peeking.
+- Servers rescan every 4 s; ↻ rescans now. Usage checks every 5 minutes; ↻ checks now; reset countdowns redraw each minute. Hovering a meter: `5h: 3% used, 97% left, resets in 4h 32m`.
+- Agent states (working, blocked, done, idle) in the agent rows are Herdr's own, unchanged.
+- An agent with no saved login is left out of the bar; an expired login, HTTP error or network failure shows a short message in `blocked` for that agent.
+
+## Built from
+
+- **Layout** `layouts/main-custom.json`: Herdr's `main` 0.1.15 (`layout.clone`) with the `agents` block's mod set to `agents-servers` and the `status` block's to `status-usage`.
+- **Mod** `mods/agents-servers/`: `mod.clone` of Herdr's `agents` (0.1.15). `main.js` makes a `Servers` (`servers.js`) in `init`, `start(cx)`, and appends `servers.rows(t, collapsed)` to the agents list's children. `servers.js` runs `python3 -I scan.py` with `exec` and draws the rows. `scan.py` prints JSON `{ports, compose, docker_error}`:
+  - ports: TCP listeners from `ss -ltnpH` (else `lsof -nP -iTCP -sTCP:LISTEN -Fpn`), kept when the process has `HC_TERMINAL_ID` in its environment (every process started in a herdr-core terminal inherits it: `/proc/<pid>/environ` on Linux, `ps -E` on macOS), its name isn't an agent's (`claude`, `codex`, `opencode`, `copilot`, `gemini`, `amp`, `cursor-agent`) and the port is below 32768; with argv, folder and bound hosts, one entry per port and process.
+  - compose: `docker ps --format '{{json .}}'` containers with a `com.docker.compose.project` label: project, service, working dir, state, health (from the status text), published ports; and the terminal of a `docker compose` CLI process with `HC_TERMINAL_ID` whose `-p`/`COMPOSE_PROJECT_NAME`/folder name matches the project or whose folder is the project's working dir, preferring `up`/`watch` over `start` over `logs`.
+- **Mod** `mods/status-usage/`: `mod.clone` of Herdr's `workspace-status` (0.1.15). `main.js` makes a `Usage` (`usage.js`), tracks its width with `on_size_change`, and adds `usage.render(t, mode)` and a divider before the palette hint. `usage.js` `fetch`es:
+  - Claude Code: `GET https://api.anthropic.com/api/oauth/usage` with `Authorization: Bearer <claudeAiOauth.accessToken>` and `anthropic-beta: oauth-2025-04-20`, the token from `~/.claude/.credentials.json`, else on macOS `security find-generic-password -s "Claude Code-credentials" -w`. Meters from `limits[]` (`session` → 5h, `weekly_all` → Week, `weekly_scoped` → `<model> wk`, `percent`, `resets_at`), else `five_hour`/`seven_day` `utilization`.
+  - Codex: `GET https://chatgpt.com/backend-api/wham/usage` with `Authorization: Bearer <tokens.access_token>` and `ChatGPT-Account-Id: <tokens.account_id>` from `~/.codex/auth.json`. Meters from `rate_limit.primary_window`/`secondary_window` (`used_percent`, `limit_window_seconds` 18000 → 5h, 604800 → Week, `reset_at` seconds).
+- **herdr**: `agents`, `terminals` (`where`, `labels`, `state`), `spaces`, `run` (`terminal.peek`), `exec`, `hc`, `readTextFile`, `knownAgents` (icons), `home`, `appHome`, `theme`, `window` (`platform`). Icons are Herdr's own from `mods/workspace-chrome/` and the program table.
+
+## Watch out
+
+- Herdr's shipped mods are read-only: clone them (`mod.clone`) and point a cloned layout at the clones; never edit `agents` or `workspace-status` in place.
+- A layout block can't size to its content, so a separate Servers block under Agents leaves a gap: drawing the servers inside the agents list is what puts them right under the last agent.
+- `ss` shows the owning process only for your own processes, and `docker-proxy` runs as root: Compose ports come from `docker ps`, never from `ss`.
+- An agent listens on a loopback port of its own (Claude Code does): skip agent processes by name or every agent shows up as a server.
+- `hc run` from a mod has no parent terminal; from an agent's shell it does, and the terminal shows under that agent as a sub-agent.
+- The usage endpoints are what the agents' own clients call, not documented APIs. Send a `User-Agent`; treat 401/403 as an expired login. Never log or store tokens.
+- Status bar room runs out fast: measure the bar's own width (`on_size_change`) and drop words, then bars, never the percentages.
+- Herdr doesn't reload symlinked mod folders on change; restart after `git pull`.
+
+## Done when
+
+- `herdr-app check` passes for both mods and `herdr-app do layout.switch --name main-custom` shows the layout with no errors in `herdr-app status`.
+- `python3 -m http.server 3000` in a Herdr terminal shows `:3000 python3 http.server` with that terminal's space and tab within 4 seconds; clicking it peeks at its output; `:3000 ↗` opens the page; stopping it removes the row.
+- `docker compose up` of any project with a published port shows the project header and its services; clicking one peeks at that terminal. With the terminal closed and the containers still running, clicking opens a `docker compose logs -f` peek, and clicking again reuses it.
+- The status bar shows Claude Code's 5h and Week meters and Codex's meter with the same percentages as `/usage` in Claude Code and `/status` in Codex; an agent without a login isn't there.
+- Narrowing the window drops words, then bars, while every percentage stays.
