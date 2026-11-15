@@ -1,10 +1,10 @@
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { exec, hc, run, appHome, home, terminals, spaces, window } from "herdr";
+import { exec, hc, run, appHome, home, terminals, spaces, panes, window } from "herdr";
 
 // Servers you're running, listed right under the agents: TCP ports opened from a
-// Herdr terminal (by you or an agent) and running Docker Compose services.
-// Click one to peek at its output.
+// Herdr terminal (by you or an agent), grouped by space, and running Docker Compose
+// services, grouped by project. Click one to peek at its output.
 
 const SCAN_MS = 4000;                 // ss + docker ps are cheap; servers come and go fast
 const LOG_TAIL_LINES = "200";
@@ -47,6 +47,7 @@ export class Servers {
     this.error = null;
     this.logsError = null;
     this.hovered = null;
+    this.folded = new Set();
     this.scanning = false;
     this.opening = new Set();
     cx.timer.every(SCAN_MS, (cx) => this.scan(cx));
@@ -71,13 +72,33 @@ export class Servers {
     });
   }
 
+  // Read the host lists once per render: every host read copies the whole list into JS.
+  snapshot() {
+    this.terms = new Map(terminals().map((t) => [t.address, t]));
+    this.spaceList = spaces();
+    const tabs = new Map();
+    for (const s of this.spaceList) for (const tab of s.tabs) tabs.set(tab.id, { space: s, tab });
+    this.places = new Map();
+    for (const p of panes()) if (p.terminal && tabs.has(p.tab)) this.places.set(p.terminal, tabs.get(p.tab));
+  }
+
   where(address) {
-    const term = terminals().find((t) => t.address === address);
+    const term = this.terms.get(address);
     if (!term) return address;
     const where = term.where ?? term.labels?.where;
     if (where) return where;
-    const space = spaces().find((s) => s.id === term.labels?.["herdr.space"]);
+    const space = this.spaceList.find((s) => s.id === term.labels?.["herdr.space"]);
     return space?.name ?? address;
+  }
+
+  // The space a terminal is in, and its tab. A terminal with no pane (one started with
+  // `hc run --bg`) has only its space label, so its tab falls back to where().
+  placeOf(address) {
+    const known = this.places.get(address);
+    if (known) return { id: known.space.id, name: known.space.name, order: known.space.index, tab: known.tab.name };
+    const space = this.spaceList.find((s) => s.id === this.terms.get(address)?.labels?.["herdr.space"]);
+    if (space) return { id: space.id, name: space.name, order: space.index, tab: this.where(address) };
+    return { id: "", name: "Other", order: Infinity, tab: this.where(address) };
   }
 
   openBrowser(port) {
@@ -150,7 +171,7 @@ export class Servers {
       .child(`:${port} ↗`);
   }
 
-  portRow(p, t) {
+  portRow(p, place, t) {
     const id = `srv-port-${p.port}-${p.pid}`;
     return h_flex().id(id).px(8).py(5).flex_none().rounded(8).gap(9).items_center()
       .cursor_pointer().hover((s) => s.bg(t.hover))
@@ -163,7 +184,7 @@ export class Servers {
           .child(div().font_semibold().text_color(t.foreground).child(`:${p.port}`))
           .child(div().min_w(0).truncate().text_color(t.muted).child(processLabel(p))))
         .child(div().min_w(0).truncate().text_size(11).text_color(t.dim)
-          .child(`${this.where(p.terminal)} · ${hostLabel(p.hosts)}`)))
+          .child(`${place.tab} · ${hostLabel(p.hosts)}`)))
       .when(this.hovered === id, (el) => el.child(this.browserButton(`${id}-open`, p.port, t)));
   }
 
@@ -187,14 +208,36 @@ export class Servers {
       .when(this.hovered === id && s.ports.length > 0, (el) => el.child(this.browserButton(`${id}-open`, s.ports[0].host, t)));
   }
 
-  projectHeader(s, t) {
-    return h_flex().id(`srv-proj-${s.project}`).px(8).pt(6).pb(2).flex_none().gap(6).items_center()
-      .text_size(11).text_color(t.dim)
+  logsButton(id, s, t) {
+    return div().id(id).flex_none().px(5).h(18).rounded(5).flex().items_center()
+      .text_size(11).font_normal().text_color(t.muted).hover((st) => st.bg(t.raised).text_color(t.foreground))
+      .tooltip(`Follow all ${s.project} services' logs`)
+      .on_click((_e, cx) => { cx.stop_propagation(); this.showProject(s, cx); })
+      .child("logs");
+  }
+
+  // A group's header, styled like the agents' space headers; it folds the group.
+  // Folded, it says how many, and a red dot when a service in it is unhealthy.
+  groupHeader(g, t) {
+    const open = !this.folded.has(g.id);
+    const unhealthy = g.services?.some((s) => s.health === "unhealthy");
+    return h_flex().id(g.id).px(8).pt(8).h(30).flex_none().gap(6).items_center()
+      .text_size(11).font_medium().text_color(t.dim)
       .cursor_pointer().hover((st) => st.text_color(t.foreground))
-      .tooltip(`${s.project}: click to follow all services`)
-      .on_click((_e, cx) => this.showProject(s, cx))
-      .child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none())
-      .child(div().min_w(0).truncate().child(`${s.project}${s.workdir ? `  ${shortPath(s.workdir)}` : ""}`));
+      .on_hover(this.hover(g.id))
+      .when(Boolean(g.tip), (el) => el.tooltip(g.tip))
+      .on_click((_e, cx) => {
+        open ? this.folded.add(g.id) : this.folded.delete(g.id);
+        cx.notify();
+      })
+      .when(Boolean(g.services), (el) => el.child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none()))
+      .child(div().min_w(0).truncate().child(g.label))
+      .when(!open, (el) => el.child(div().child(String(g.members.length))))
+      .child(div().flex_1())
+      .when(Boolean(g.services) && this.hovered === g.id, (el) => el.child(this.logsButton(`${g.id}-logs`, g.services[0], t)))
+      .when(!open, (el) => el
+        .when(unhealthy, (el) => el.child(div().size(7).mx(3).rounded(4).flex_none().bg(t.blocked)))
+        .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none()));
   }
 
   // The section header, styled like the Agents header above it.
@@ -217,6 +260,7 @@ export class Servers {
   }
 
   rows(t, collapsed) {
+    this.snapshot();
     if (collapsed) return this.collapsedRows(t);
     const ports = this.data?.ports ?? [];
     const services = this.data?.compose ?? [];
@@ -227,11 +271,30 @@ export class Servers {
       out.push(div().px(8).flex_none().text_size(12).text_color(t.dim)
         .child("No servers yet. Ports opened from a Herdr terminal and running Docker Compose services show here."));
     }
-    for (const p of ports) out.push(this.portRow(p, t));
-    let project = null;
+    // Ports by space, in the spaces' order, then each Compose project.
+    const bySpace = new Map();
+    for (const p of ports) {
+      const place = this.placeOf(p.terminal);
+      const id = `srv-sp-${place.id}`;
+      if (!bySpace.has(id)) bySpace.set(id, { id, label: place.name, order: place.order, members: [] });
+      bySpace.get(id).members.push({ p, place });
+    }
+    const byProject = new Map();
     for (const s of services) {
-      if (s.project !== project) { project = s.project; out.push(this.projectHeader(s, t)); }
-      out.push(this.serviceRow(s, t));
+      const id = `srv-cp-${s.project}`;
+      if (!byProject.has(id)) {
+        const members = [];
+        byProject.set(id, { id, label: s.project, tip: `${s.project}${s.workdir ? `  ${shortPath(s.workdir)}` : ""}`, services: members, members });
+      }
+      byProject.get(id).members.push(s);
+    }
+    for (const g of [...bySpace.values()].sort((a, b) => a.order - b.order)) {
+      out.push(this.groupHeader(g, t));
+      if (!this.folded.has(g.id)) for (const m of g.members) out.push(this.portRow(m.p, m.place, t));
+    }
+    for (const g of byProject.values()) {
+      out.push(this.groupHeader(g, t));
+      if (!this.folded.has(g.id)) for (const s of g.members) out.push(this.serviceRow(s, t));
     }
     return out;
   }
