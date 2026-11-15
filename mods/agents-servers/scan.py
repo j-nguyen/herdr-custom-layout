@@ -257,6 +257,7 @@ def compose():
             "service": service,
             "container": c.get("Names", ""),
             "workdir": workdir,
+            "workdir_exists": bool(workdir) and os.path.isdir(workdir),
             "state": c.get("State", ""),
             "health": "unhealthy" if "unhealthy" in status else "healthy" if "healthy" in status else None,
             "status": status,

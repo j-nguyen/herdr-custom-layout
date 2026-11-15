@@ -9,6 +9,7 @@ import { exec, hc, run, appHome, home, terminals, spaces, window } from "herdr";
 const SCAN_MS = 4000;                 // ss + docker ps are cheap; servers come and go fast
 const LOG_TAIL_LINES = "200";
 const LOG_LABEL = "herdr.ports.logs";
+const PEEK_WAIT_MS = 3000;
 
 // "~/code/app", or "…/code/app" for a deep folder.
 function shortPath(p) {
@@ -26,6 +27,15 @@ function processLabel(p) {
   return script && script !== p.comm ? `${p.comm} ${script}` : p.comm;
 }
 
+// hc prints its error as JSON on stdout: {"error": {"message": ...}}.
+function hcError(r) {
+  try {
+    const message = JSON.parse(r.stdout)?.error?.message;
+    if (message) return message;
+  } catch {}
+  return r.stderr.trim().split("\n").pop() || `hc run exited ${r.code}`;
+}
+
 function hostLabel(hosts) {
   return hosts.every((h) => h === "127.0.0.1" || h === "::1" || h === "localhost") ? "local" : "network";
 }
@@ -35,8 +45,10 @@ export class Servers {
   start(cx) {
     this.data = null;
     this.error = null;
+    this.logsError = null;
     this.hovered = null;
     this.scanning = false;
+    this.opening = new Set();
     cx.timer.every(SCAN_MS, (cx) => this.scan(cx));
     this.scan(cx);
   }
@@ -90,18 +102,34 @@ export class Servers {
   }
 
   followLogs(key, s, services, cx) {
+    this.logsError = null;
     const existing = terminals().find((t) => t.labels?.[LOG_LABEL] === key && t.state === "live");
     if (existing) return run("terminal.peek", { terminal: existing.address });
+    if (this.opening.has(key)) return;
+    this.opening.add(key);
     cx.spawn(async (cx) => {
       const args = ["run", "--bg", "--json", "--label", `${LOG_LABEL}=${key}`];
-      if (s.workdir) args.push("--cwd", s.workdir);
+      // A project started from a folder that is gone (a removed worktree) keeps that
+      // folder in its labels, and hc cannot start a program there. `-p` alone is
+      // enough for `docker compose logs`, so any folder works.
+      if (s.workdir_exists) args.push("--cwd", s.workdir);
       args.push("--", "docker", "compose", "-p", s.project, "logs", "-f", "--tail", LOG_TAIL_LINES, ...services);
       try {
         const r = await hc(args);
-        run("terminal.peek", { terminal: JSON.parse(r.stdout).address });
+        if (r.code !== 0) throw new Error(hcError(r));
+        const address = JSON.parse(r.stdout).address;
+        // hc returns before the app lists the new terminal (0.1 to 0.5 s), and
+        // peeking at a terminal the app doesn't list yet fails.
+        const deadline = Date.now() + PEEK_WAIT_MS;
+        while (!terminals().some((t) => t.address === address) && Date.now() < deadline) await cx.sleep(100);
+        if (!terminals().some((t) => t.address === address)) throw new Error(`terminal ${address} didn't show up`);
+        this.logsError = null;
+        run("terminal.peek", { terminal: address });
       } catch (e) {
-        this.error = `couldn't open logs: ${e?.message ?? e}`;
+        this.logsError = `couldn't open logs: ${e?.message ?? e}`;
         cx.notify();
+      } finally {
+        this.opening.delete(key);
       }
     });
   }
@@ -192,7 +220,7 @@ export class Servers {
     if (collapsed) return this.collapsedRows(t);
     const ports = this.data?.ports ?? [];
     const services = this.data?.compose ?? [];
-    const note = this.error ?? this.data?.docker_error ?? null;
+    const note = this.error ?? this.logsError ?? this.data?.docker_error ?? null;
     const out = [this.header(t, ports.length + services.length)];
     if (note) out.push(div().px(8).pb(4).flex_none().text_size(11).text_color(t.blocked).truncate().tooltip(note).child(note));
     if (this.data && !ports.length && !services.length) {
