@@ -12,7 +12,9 @@ Herdr's own `main` layout for the [Herdr](https://herdr.dev) desktop app, with t
 
 ## Install
 
-Clone this repository and link the mods into Herdr's home:
+Ask your Herdr agent to "add the layout at github.com/j-nguyen/herdr-custom-layout".
+
+Or by hand: clone this repository and link the mods into Herdr's home:
 
 ```sh
 git clone https://github.com/j-nguyen/herdr-custom-layout.git ~/herdr-custom-layout
