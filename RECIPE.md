@@ -15,6 +15,8 @@ Left to right, top to bottom, as Herdr's `main`, except:
 - Hovering a row shows `:port ↗` on its right (11px `muted`, `raised` on hover).
 - No servers: "No servers yet. Ports opened from a Herdr terminal and running Docker Compose services show here." in `dim` 12px. A failed scan or a stopped Docker daemon shows its message in `blocked` 11px, one line.
 - Sidebar folded to a rail: under the agents, a divider and one 26px cell per server with its port number, 10.5px `muted`, tooltip naming it.
+- **Tabs named after their agents**: an unnamed tab with an agent shows that agent's terminal title (its leading status glyph removed, at most 40 characters, `…` after), e.g. `Herdr-app AGENTS.md`.
+- The sort menu (the sort button right of "Agents") gains a divider and **Name tabs after agents**, checked when on; the popup is 220×186.
 - **Usage in the status bar**, right-aligned before the palette hint, a 1px `border` divider between: per agent its program icon (13px, from the program table), name, plan (`max`, `prolite`) in `dim`; then a meter per limit: name in `muted` (`5h`, `Week`, `Fable wk`), a 44×5px bar of what's left (track `raised`, fill `ansi2`, `ansi3` under 50% left, `ansi1` under 20%), `97% left` in `foreground`, the time to reset in `dim` (`4h 32m`, `3d 3h`). A ↻ after the agents. Text 11.8px.
 - The status bar under 1500px wide drops the words (`97%`, no plan, `Codex` alone) and uses 28px bars; under 1150px it drops bars and reset times and colors the percentages instead.
 
@@ -24,13 +26,14 @@ Left to right, top to bottom, as Herdr's `main`, except:
 - Clicking a service row peeks at the terminal running `docker compose up` (or `watch`, `start`, `logs`) for that project. With none, it starts `docker compose -p <project> logs -f --tail 200 <service>` in the project folder with `hc run --bg`, labeled `herdr.ports.logs=<project>/<service>`, and peeks at it; the next click finds that live terminal by its label and reuses it.
 - `:port ↗` opens `http://localhost:<port>` with `xdg-open` (`open` on macOS, `start` on Windows) without peeking.
 - Servers rescan every 4 s; ↻ rescans now. Usage checks every 5 minutes; ↻ checks now; reset countdowns redraw each minute. Hovering a meter: `5h: 3% used, 97% left, resets in 4h 32m`.
+- Every 3 s, each tab's first agent (pane order) names it with `tab.rename {id, name}` when its title says something about the work: not empty, not a folder (`~`, `/`), not `user@host`, not the program's own name (`Claude Code`, `codex`). A name we gave is remembered (mod `localStorage` `autotitles`, tab id → name) and follows the title; a tab named anything else was named by a person and is never touched; renaming to "" makes it unnamed, so it is named again. The toggle is `shared("agents.autotitle")` (`false` = off).
 - Agent states (working, blocked, done, idle) in the agent rows are Herdr's own, unchanged.
 - An agent with no saved login is left out of the bar; an expired login, HTTP error or network failure shows a short message in `blocked` for that agent.
 
 ## Built from
 
 - **Layout** `layouts/main-custom.json`: Herdr's `main` 0.1.15 (`layout.clone`) with the `agents` block's mod set to `agents-servers` and the `status` block's to `status-usage`.
-- **Mod** `mods/agents-servers/`: `mod.clone` of Herdr's `agents` (0.1.15). `main.js` makes a `Servers` (`servers.js`) in `init`, `start(cx)`, and appends `servers.rows(t, collapsed)` to the agents list's children. `servers.js` runs `python3 -I scan.py` with `exec` and draws the rows. `scan.py` prints JSON `{ports, compose, docker_error}`:
+- **Mod** `mods/agents-servers/`: `mod.clone` of Herdr's `agents` (0.1.15). `autotitle.js` holds `AutoTitle`, started in `init` beside `Servers`. `main.js` makes a `Servers` (`servers.js`) in `init`, `start(cx)`, and appends `servers.rows(t, collapsed)` to the agents list's children. `servers.js` runs `python3 -I scan.py` with `exec` and draws the rows. `scan.py` prints JSON `{ports, compose, docker_error}`:
   - ports: TCP listeners from `ss -ltnpH` (else `lsof -nP -iTCP -sTCP:LISTEN -Fpn`), kept when the process has `HC_TERMINAL_ID` in its environment (every process started in a herdr-core terminal inherits it: `/proc/<pid>/environ` on Linux, `ps -E` on macOS), its name isn't an agent's (`claude`, `codex`, `opencode`, `copilot`, `gemini`, `amp`, `cursor-agent`) and the port is below 32768; with argv, folder and bound hosts, one entry per port and process.
   - compose: `docker ps --format '{{json .}}'` containers with a `com.docker.compose.project` label: project, service, working dir, state, health (from the status text), published ports; and the terminal of a `docker compose` CLI process with `HC_TERMINAL_ID` whose `-p`/`COMPOSE_PROJECT_NAME`/folder name matches the project or whose folder is the project's working dir, preferring `up`/`watch` over `start` over `logs`.
 - **Mod** `mods/status-usage/`: `mod.clone` of Herdr's `workspace-status` (0.1.15). `main.js` makes a `Usage` (`usage.js`), tracks its width with `on_size_change`, and adds `usage.render(t, mode)` and a divider before the palette hint. `usage.js` `fetch`es:
@@ -47,6 +50,7 @@ Left to right, top to bottom, as Herdr's `main`, except:
 - `hc run` from a mod has no parent terminal; from an agent's shell it does, and the terminal shows under that agent as a sub-agent.
 - The usage endpoints are what the agents' own clients call, not documented APIs. Send a `User-Agent`; treat 401/403 as an expired login. Never log or store tokens.
 - Status bar room runs out fast: measure the bar's own width (`on_size_change`) and drop words, then bars, never the percentages.
+- `tab.named` is true for a name a mod gave too: remember the names you set, or every auto name looks like a person's and stops following.
 - Herdr doesn't reload symlinked mod folders on change; restart after `git pull`.
 
 ## Done when
@@ -55,4 +59,5 @@ Left to right, top to bottom, as Herdr's `main`, except:
 - `python3 -m http.server 3000` in a Herdr terminal shows `:3000 python3 http.server` with that terminal's space and tab within 4 seconds; clicking it peeks at its output; `:3000 ↗` opens the page; stopping it removes the row.
 - `docker compose up` of any project with a published port shows the project header and its services; clicking one peeks at that terminal. With the terminal closed and the containers still running, clicking opens a `docker compose logs -f` peek, and clicking again reuses it.
 - The status bar shows Claude Code's 5h and Week meters and Codex's meter with the same percentages as `/usage` in Claude Code and `/status` in Codex; an agent without a login isn't there.
+- A Claude Code tab named `1` becomes its topic within a few seconds; renaming the tab by hand stops it changing; renaming it to "" brings the topic back; unchecking **Name tabs after agents** stops it.
 - Narrowing the window drops words, then bars, while every percentage stays.

@@ -6,6 +6,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
 import { Servers } from "./servers.js";
+import { AutoTitle, AUTOTITLE_KEY, autotitleOn } from "./autotitle.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -90,6 +91,8 @@ export default class Agents extends View {
     cx.timer.every(30000, (cx) => cx.notify());
     this.servers = new Servers();
     this.servers.start(cx);
+    this.autotitle = new AutoTitle();
+    this.autotitle.start(cx);
   }
 
   // Stamps agents whose state changed. Done and idle count as one: looking at a
@@ -160,7 +163,25 @@ export default class Agents extends View {
         })
         .child(svg(`mods/workspace-chrome/${s.icon}.svg`).size(14).flex_none().text_color(t.muted))
         .child(div().flex_1().child(s.label))
-        .when(s.id === on, (el) => el.child(svg("mods/workspace-chrome/check.svg").size(14).flex_none().text_color(t.foreground)))));
+        .when(s.id === on, (el) => el.child(svg("mods/workspace-chrome/check.svg").size(14).flex_none().text_color(t.foreground)))))
+      .child(div().mx(8).my(5).h(1).bg(t.border))
+      .child(h_flex()
+        .id("autotitle")
+        .h(31)
+        .px(8)
+        .gap(9)
+        .rounded(7)
+        .items_center()
+        .text_color(t.foreground)
+        .hover((el) => el.bg(t.hover))
+        .tooltip("Name each tab after what its agent is working on. Tabs you name yourself keep their name.")
+        .on_click(() => {
+          setShared(AUTOTITLE_KEY, !autotitleOn());
+          closeOverlay(props().overlay);
+        })
+        .child(svg("mods/workspace-chrome/terminal.svg").size(14).flex_none().text_color(t.muted))
+        .child(div().flex_1().child("Name tabs after agents"))
+        .when(autotitleOn(), (el) => el.child(svg("mods/workspace-chrome/check.svg").size(14).flex_none().text_color(t.foreground))));
   }
 
   peek(addr) {
@@ -435,8 +456,8 @@ export default class Agents extends View {
                 .text_size(11)
                 .text_color(t.dim)
                 .hover((s) => s.text_color(t.foreground))
-                .on_click(() => openOverlay({ mod: "agents-servers", kind: "popup", width: 200, height: 140, props: { sortMenu: true } }))
-                .tooltip(`Sort agents: ${sort.label}`)
+                .on_click(() => openOverlay({ mod: "agents-servers", kind: "popup", width: 220, height: 186, props: { sortMenu: true } }))
+                .tooltip(`Sort agents: ${sort.label}${autotitleOn() ? " · naming tabs after agents" : ""}`)
                 .child(svg(`mods/workspace-chrome/${sort.icon}.svg`).size(14)),
             ),
         ),
