@@ -73,10 +73,16 @@ function duration(ms) {
   return h < 24 ? `${h}h` : `${Math.floor(h / 24)}d`;
 }
 
-// The agent's icon from the app's program table: a one-color glyph or a picture.
+// Keep the program's recognizable logo in a consistent, legible badge.
 function icon(p, size, color) {
-  if (!p?.icon) return null;
-  return p.tint ? svg(p.icon).size(size).flex_none().text_color(color) : image(p.icon).w(size).h(size).flex_none();
+  const path = p?.icon ?? "icons/agent.svg";
+  return !p?.icon || p.tint ? svg(path).size(size).flex_none().text_color(color)
+    : image(path).w(size).h(size).flex_none();
+}
+
+function agentBadge(p, t, size = 24) {
+  return h_flex().size(size).flex_none().rounded(6).bg(t.raised)
+    .items_center().justify_center().child(icon(p, size === 24 ? 17 : 14, t.foreground));
 }
 
 export default class Agents extends View {
@@ -203,7 +209,7 @@ export default class Agents extends View {
   subRow(t, s, shown, compact) {
     const k = s.t;
     const st = kidStatus(k, this.listed);
-    const pic = icon(k.program, 14, t.foreground);
+    const pic = agentBadge(k.program, t, 20);
     const on = k.address === shown;
     return h_flex()
       .id(`sub-${k.address}`)
@@ -317,7 +323,7 @@ export default class Agents extends View {
     }
 
     const row = (a, i, subs = []) => {
-      const pic = icon(a.program, 16, t.foreground);
+      const pic = agentBadge(a.program, t);
       const more = detail.get(a.address);
       // An agent on another machine (`vps/t7`) says which.
       const machine = a.address.includes("/") ? a.address.split("/")[0] : null;
@@ -325,13 +331,14 @@ export default class Agents extends View {
         return h_flex()
           .id(`ag-${a.address}`)
           .h(26)
-          .px(8)
+          .px(4)
           .flex_none()
           .items_center()
-          .gap(4)
+          .gap(2)
           .hover((s) => s.bg(t.hover))
           .on_click(() => run("pane.focus", { pane: a.pane }))
-          .child(div().flex_1().min_w(0).whitespace_nowrap().text_right().text_color(t.muted).child(String(i + 1)))
+          .tooltip(`${a.program?.name ?? "Agent"} · ${a.space_name || label(a)} · ${a.status}`)
+          .child(agentBadge(a.program, t, 20))
           .child(h_flex().w(14).flex_none().items_center().justify_center().child(this.status(t, a, true)));
       }
       const when = this.since(a);
