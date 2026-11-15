@@ -5,9 +5,8 @@ import { h_flex } from "gpui-base";
 import { spaces, agents, theme, run, window, keys } from "herdr";
 import { Usage } from "./usage.js";
 
-// Status bar width (px) at which agent usage gets room for words, then for bars.
-const USAGE_FULL_AT = 1500;
-const USAGE_COMPACT_AT = 1150;
+// Status bar width (px) at which provider names fit beside their icons.
+const USAGE_FULL_AT = 1000;
 
 export default class WorkspaceStatus extends View {
   init(_props, cx) {
@@ -33,7 +32,7 @@ export default class WorkspaceStatus extends View {
     const list = agents();
     const needs = list.filter(a => a.status === "blocked").length;
     const label = (icon, text) => h_flex().gap(6).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(13)).child(text);
-    const mode = this.width >= USAGE_FULL_AT ? "full" : this.width >= USAGE_COMPACT_AT ? "compact" : "tiny";
+    const mode = this.width >= USAGE_FULL_AT ? "full" : "compact";
     return h_flex().id("root").on_size_change((size, cx) => { this.width = size.width; cx.notify(); }).size_full().overflow_hidden().px(14).gap(16).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).text_color(t.muted)
       .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
       .when(Boolean(space?.branch), el => el.child(label("branch", space.branch)))

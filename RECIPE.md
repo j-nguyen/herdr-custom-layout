@@ -18,7 +18,7 @@ Left to right, top to bottom, as Herdr's `main`, except:
 - Sidebar folded to a rail: under the agents, a divider and one 26px cell per server with its port number, 10.5px `muted`, tooltip naming it.
 - **Tabs named after their agents**: an unnamed tab with an agent shows that agent's terminal title (its leading status glyph removed, at most 40 characters, `…` after), e.g. `Herdr-app AGENTS.md`.
 - The sort menu (the sort button right of "Agents") gains a divider and **Name tabs after agents**, checked when on; the popup is 220×186.
-- **Usage in the status bar**, right-aligned before the palette hint, a 1px `border` divider between: per agent its program icon (13px, from the program table), name, plan (`max`, `prolite`) in `dim`; then a meter per limit: name in `muted` (`5h`, `Week`, `Fable wk`), a 44×5px bar of what's left (track `raised`, fill `ansi2`, `ansi3` under 50% left, `ansi1` under 20%), `97% left` in `foreground`, the time to reset in `dim` (`4h 32m`, `3d 3h`). A ↻ after the agents. Text 11.8px.
+- **Usage in the status bar**, right-aligned before the palette hint: one “Left” label, then a compact group per agent with a `raised` background, 4px corners, 20px height, and 8px horizontal padding. Each group contains its 13px icon, name, and labeled percentages (`5h`, `Week`, per-model limits). Percentages use `ansi2`, `ansi3` under 50% left, and `ansi1` under 20%. Hover a percentage for usage and reset time, or the agent group for its plan or error details. Below 1000px, omit provider names but retain icons, limit labels, and all percentages. A ↻ refresh button follows the groups.
 - The status bar under 1500px wide drops the words (`97%`, no plan, `Codex` alone) and uses 28px bars; under 1150px it drops bars and reset times and colors the percentages instead.
 
 ## How it behaves
@@ -54,7 +54,7 @@ Left to right, top to bottom, as Herdr's `main`, except:
 - An agent listens on a loopback port of its own (Claude Code does): skip agent processes by name or every agent shows up as a server.
 - `hc run` from a mod has no parent terminal; from an agent's shell it does, and the terminal shows under that agent as a sub-agent.
 - The usage endpoints are what the agents' own clients call, not documented APIs. Send a `User-Agent`; treat 401/403 as an expired login. Never log or store tokens.
-- Status bar room runs out fast: measure the bar's own width (`on_size_change`) and drop words, then bars, never the percentages.
+- Status bar room runs out fast: measure the bar's own width (`on_size_change`) and drop provider names, keeping limit labels and percentages.
 - `tab.named` is true for a name a mod gave too: remember the names you set, or every auto name looks like a person's and stops following.
 - Herdr doesn't reload symlinked mod folders on change; restart after `git pull`.
 
@@ -66,4 +66,4 @@ Left to right, top to bottom, as Herdr's `main`, except:
 - Right-clicking a file in Files or Changes shows the menu at the pointer; `Open in VS Code` opens the file in the window of its git folder; `Reveal in Finder` selects it in Finder; an editor that isn't installed is dimmed and does nothing.
 - The status bar shows Claude Code's 5h and Week meters and Codex's meter with the same percentages as `/usage` in Claude Code and `/status` in Codex; an agent without a login isn't there.
 - A Claude Code tab named `1` becomes its topic within a few seconds; renaming the tab by hand stops it changing; renaming it to "" brings the topic back; unchecking **Name tabs after agents** stops it.
-- Narrowing the window drops words, then bars, while every percentage stays.
+- Narrowing the window drops provider names while every limit label and percentage stays.

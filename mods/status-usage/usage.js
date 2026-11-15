@@ -9,8 +9,6 @@ import { home, readTextFile, knownAgents, exec, window } from "herdr";
 
 const REFRESH_MS = 5 * 60 * 1000;   // usage changes slowly; the servers don't like polling
 const CLOCK_MS = 60 * 1000;         // reset countdowns show minutes
-const BAR_WIDTH = 44;
-const COMPACT_BAR_WIDTH = 28;
 const LOW_LEFT = 20;                // % left: red below this
 const MID_LEFT = 50;                // % left: yellow below this
 
@@ -99,7 +97,7 @@ function untilText(ms) {
 }
 
 // Owned by the status bar view: call start(cx) from its init, render(t, mode) from its render.
-// mode: "full" (words, bars, resets), "compact" (bars, numbers, resets), "tiny" (numbers only).
+// mode: "full" (provider names) or "compact" (provider icons); details on hover.
 export class Usage {
   start(cx) {
     this.state = {};      // provider id -> { plan, meters } | { error }
@@ -139,41 +137,39 @@ export class Usage {
       : svg(path).size(13).flex_none().text_color(t.foreground);
   }
 
-  meter(m, t, id, mode) {
+  meter(m, t, id) {
     const left = Math.max(0, Math.min(100, Math.round(100 - m.used)));
     const color = left < LOW_LEFT ? t.ansi1 : left < MID_LEFT ? t.ansi3 : t.ansi2;
     const reset = untilText(m.resetsAt);
-    const barWidth = mode === "full" ? BAR_WIDTH : COMPACT_BAR_WIDTH;
-    return h_flex().id(id).gap(5).items_center().flex_none()
+    return h_flex().id(id).gap(4).items_center().flex_none()
       .tooltip(`${m.name}: ${Math.round(m.used)}% used, ${left}% left${reset ? `, resets in ${reset}` : ""}`)
       .child(div().text_color(t.muted).child(m.name))
-      .when(mode !== "tiny", (el) => el.child(div().w(barWidth).h(5).rounded(3).bg(t.raised).overflow_hidden()
-        .child(div().h(5).w(Math.round((barWidth * left) / 100)).rounded(3).bg(color))))
-      .child(div().text_color(mode === "tiny" ? color : t.foreground).child(mode === "full" ? `${left}% left` : `${left}%`))
-      .when(Boolean(reset) && mode !== "tiny", (el) => el.child(div().text_color(t.dim).child(reset)));
+      .child(div().text_color(color).child(`${left}%`));
   }
 
   provider(p, t, mode) {
     const s = this.state?.[p.id];
-    const row = h_flex().gap(10).items_center().flex_none()
+    const row = h_flex().id(`usage-${p.id}`).gap(10).items_center().flex_none()
+      .h(20).px(8).rounded(4).bg(t.raised)
+      .tooltip(`${p.label}${s?.plan ? ` · ${s.plan}` : ""} · plan remaining${s?.error ? `: ${s.error}` : ""}`)
       .child(h_flex().gap(5).items_center().child(this.icon(p, t))
-        .child(div().text_color(t.foreground).child(mode === "full" ? p.label : p.short ?? p.label))
-        .when(Boolean(s?.plan) && mode === "full", (el) => el.child(div().text_color(t.dim).child(s.plan))));
+        .when(mode === "full", (el) => el.child(div().text_color(t.foreground).child(p.label))));
     if (!s) return row.child(div().text_color(t.dim).child("…"));
-    if (s.error) return row.child(div().text_color(t.blocked).child(s.error));
+    if (s.error) return row.child(div().text_color(t.blocked).child("unavailable"));
     if (!s.meters.length) return row.child(div().text_color(t.dim).child("no limits"));
-    return row.children(s.meters.map((m, i) => this.meter(m, t, `usage-${p.id}-${i}`, mode)));
+    return row.children(s.meters.map((m, i) => this.meter(m, t, `usage-${p.id}-${i}`)));
   }
 
   render(t, mode) {
     const ago = this.checkedAt ? Math.floor((Date.now() - this.checkedAt) / 60000) : null;
     const checked = ago == null ? "" : ago < 1 ? "checked just now" : `checked ${ago}m ago`;
     const parts = [];
-    PROVIDERS.filter((p) => !this.state?.[p.id]?.absent).forEach((p, i) => {
-      if (i) parts.push(div().w(1).h(12).bg(t.border).flex_none());
+    PROVIDERS.filter((p) => !this.state?.[p.id]?.absent).forEach((p) => {
       parts.push(this.provider(p, t, mode));
     });
-    return h_flex().gap(14).items_center().flex_none()
+    if (!parts.length) return div();
+    return h_flex().gap(8).items_center().flex_none()
+      .child(div().text_color(t.dim).child("Left"))
       .children(parts)
       .child(div().id("usage-refresh").flex_none().text_color(t.dim).hover((s) => s.text_color(t.foreground))
         .tooltip(`Refresh agent usage${checked ? ` (${checked})` : ""}`)
