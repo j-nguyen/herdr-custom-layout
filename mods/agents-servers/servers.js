@@ -75,17 +75,27 @@ export class Servers {
     exec(cmd, args).catch(() => {});
   }
 
-  // A compose service's output: the terminal running `docker compose up`, else a
-  // `docker compose logs -f` terminal of our own (made once, then reused).
+  // One compose service's output: a terminal showing only that service, else a
+  // `docker compose logs -f <service>` terminal of our own (made once, then reused).
   showService(s, cx) {
     if (s.terminal) return run("terminal.peek", { terminal: s.terminal });
-    const key = `${s.project}/${s.service}`;
+    this.followLogs(`${s.project}/${s.service}`, s, [s.service], cx);
+  }
+
+  // Every service of the project together: the terminal running `docker compose up`,
+  // else a `docker compose logs -f` terminal of our own.
+  showProject(s, cx) {
+    if (s.project_terminal) return run("terminal.peek", { terminal: s.project_terminal });
+    this.followLogs(s.project, s, [], cx);
+  }
+
+  followLogs(key, s, services, cx) {
     const existing = terminals().find((t) => t.labels?.[LOG_LABEL] === key && t.state === "live");
     if (existing) return run("terminal.peek", { terminal: existing.address });
     cx.spawn(async (cx) => {
       const args = ["run", "--bg", "--json", "--label", `${LOG_LABEL}=${key}`];
       if (s.workdir) args.push("--cwd", s.workdir);
-      args.push("--", "docker", "compose", "-p", s.project, "logs", "-f", "--tail", LOG_TAIL_LINES, s.service);
+      args.push("--", "docker", "compose", "-p", s.project, "logs", "-f", "--tail", LOG_TAIL_LINES, ...services);
       try {
         const r = await hc(args);
         run("terminal.peek", { terminal: JSON.parse(r.stdout).address });
@@ -137,7 +147,7 @@ export class Servers {
     return h_flex().id(id).px(8).py(5).flex_none().rounded(8).gap(9).items_center()
       .cursor_pointer().hover((st) => st.bg(t.hover))
       .on_hover(this.hover(id))
-      .tooltip(`${s.container}: ${s.status}\n${s.terminal ? "Click to see its terminal" : "Click to follow its logs"}`)
+      .tooltip(`${s.container}: ${s.status}\nClick to follow ${s.service} logs`)
       .on_click((_e, cx) => this.showService(s, cx))
       .child(div().size(7).mx(3).rounded(4).flex_none().bg(dot))
       .child(v_flex().flex_1().min_w(0)
@@ -152,6 +162,9 @@ export class Servers {
   projectHeader(s, t) {
     return h_flex().id(`srv-proj-${s.project}`).px(8).pt(6).pb(2).flex_none().gap(6).items_center()
       .text_size(11).text_color(t.dim)
+      .cursor_pointer().hover((st) => st.text_color(t.foreground))
+      .tooltip(`${s.project}: click to follow all services`)
+      .on_click((_e, cx) => this.showProject(s, cx))
       .child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none())
       .child(div().min_w(0).truncate().child(`${s.project}${s.workdir ? `  ${shortPath(s.workdir)}` : ""}`));
   }

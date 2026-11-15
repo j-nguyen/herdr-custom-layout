@@ -2,8 +2,9 @@
 
 ports:   TCP listeners owned by processes started inside a herdr-core terminal
          (they inherit HC_TERMINAL_ID), with that terminal's address.
-compose: running Docker Compose containers, their published ports, and the
-         terminal running `docker compose up` for that project, if any.
+compose: running Docker Compose containers, their published ports, the
+         terminal showing that one service's output, and the terminal showing
+         the whole project's output (`docker compose up`), if any.
 """
 import json
 import os
@@ -16,6 +17,10 @@ AGENT_PROCESSES = {"claude", "codex", "opencode", "copilot", "gemini", "amp", "c
 # Kernel-assigned ports are helpers' sockets, not servers people open.
 EPHEMERAL_FROM = 32768
 COMPOSE_TERMINAL_RANK = {"up": 0, "watch": 0, "start": 1, "logs": 2}
+# Flags of those verbs that take a value, so the value is not read as a service name.
+COMPOSE_VALUE_FLAGS = {"-n", "--tail", "--since", "--until", "--index", "-t", "--timeout",
+                       "--scale", "--exit-code-from", "--attach", "--no-attach", "--pull",
+                       "--wait-timeout"}
 COMMAND_TIMEOUT_S = 5
 
 
@@ -183,8 +188,34 @@ def compose_terminals():
                 project = a.split("=", 1)[1]
         cwd = PROCS.cwd(pid)
         found.append({"terminal": env["HC_TERMINAL_ID"], "verb": verb, "cwd": cwd,
-                      "project": project or (compose_project_name(os.path.basename(cwd)) if cwd else None)})
+                      "named": project is not None,
+                      "project": project or (compose_project_name(os.path.basename(cwd)) if cwd else None),
+                      "services": compose_services(rest[rest.index(verb) + 1:])})
     return found
+
+
+def compose_services(args):
+    """The services a `docker compose <verb>` names. None named means all of them."""
+    services, skip = [], False
+    for a in args:
+        if skip:
+            skip = False
+        elif a in COMPOSE_VALUE_FLAGS:
+            skip = True
+        elif not a.startswith("-"):
+            services.append(a)
+    return services
+
+
+def compose_terminal(clis, project, workdir, services):
+    """The best terminal showing exactly these services of the project, or None."""
+    # A command that names its project matches that project only. Otherwise two
+    # projects started from one folder would share each other's terminals.
+    matches = [t for t in clis
+               if (t["project"] == project or (not t["named"] and workdir and t["cwd"] == workdir))
+               and t["services"] == services]
+    matches.sort(key=lambda t: COMPOSE_TERMINAL_RANK[t["verb"]])
+    return matches[0]["terminal"] if matches else None
 
 
 def parse_ports(text):
@@ -219,19 +250,19 @@ def compose():
         if not project:
             continue
         workdir = labels.get("com.docker.compose.project.working_dir")
-        matches = [t for t in clis if t["project"] == project or (workdir and t["cwd"] == workdir)]
-        matches.sort(key=lambda t: COMPOSE_TERMINAL_RANK[t["verb"]])
+        service = labels.get("com.docker.compose.service", c.get("Names", ""))
         status = c.get("Status", "")
         services.append({
             "project": project,
-            "service": labels.get("com.docker.compose.service", c.get("Names", "")),
+            "service": service,
             "container": c.get("Names", ""),
             "workdir": workdir,
             "state": c.get("State", ""),
             "health": "unhealthy" if "unhealthy" in status else "healthy" if "healthy" in status else None,
             "status": status,
             "ports": parse_ports(c.get("Ports")),
-            "terminal": matches[0]["terminal"] if matches else None,
+            "terminal": compose_terminal(clis, project, workdir, [service]),
+            "project_terminal": compose_terminal(clis, project, workdir, []),
         })
     services.sort(key=lambda s: (s["project"], s["service"]))
     return services, None
