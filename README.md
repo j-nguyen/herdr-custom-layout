@@ -1,16 +1,17 @@
 # Herdr Custom Layout
 
-![Herdr Custom Layout: servers under the agents, plan usage in the status bar](preview.png)
+![Herdr Custom Layout showing the sidebar and status bar](preview.png)
 
-Herdr's own `main` layout for the [Herdr](https://herdr.dev) desktop app, with two additions for working with coding agents: the servers your terminals are running, listed right under the agents, and how much of each agent's plan you have left, in the status bar.
+This custom layout for the Herdr desktop app shows the servers your terminals are running and how much of each agent's plan you have left. [Herdr](https://herdr.dev)
 
 - **Clearer space and agent icons.** Spaces use colored project glyphs (folder, code, web, server, database, or terminal), selected from their names. Agents keep their recognizable logos in consistent badges, with a fallback for unknown programs. The collapsed sidebar shows icons with names on hover.
-- **Servers under the agents.** Web and API servers started in Herdr show their ports and log sources. Click a server to follow its log files or peek at its terminal output. Use **keep** in the peek to open it as a tab. Hover for a `:port ↗` button that opens the server in your browser.
+- **Agents and Servers selector.** The sidebar opens on **Agents** and shows one list at a time. The selector stays visible as you scroll. **Servers** shows a count when servers are present. Click ↻ in **Servers** to scan again. A **Needs you** dot marks **Agents** when an agent needs attention while you view **Servers**. The collapsed sidebar keeps the agent icons and a single shortcut that opens **Servers**.
+- **Server ports and logs.** Web and API servers started in Herdr show their ports and log sources. Ports without a matching space appear in **Unassigned**, which starts folded. Click a server to follow its log files or peek at its terminal output. Use **keep** in the peek to open it as a tab. Hover for a `:port ↗` button that opens the server in your browser.
 - **Docker containers.** Compose services show under their project. Standalone containers with published TCP ports show under **Docker**. Click a container to follow its logs. Hover a Compose project header and click **logs** to see all services together. Clicking again reuses the live logs terminal.
 - **Plan usage in the status bar.** Claude and Codex each get a compact shaded group with labeled percentages remaining, including per-model weekly limits. A single “Left” label applies to all percentages. Green means at least 50% left, yellow below 50%, and red below 20%. Hover a percentage for usage and reset time; hover the agent for its plan or error details. Narrow windows show agent icons instead of names, keeping every limit label and percentage. ↻ refreshes usage (also checked automatically every 5 minutes). An agent you haven't logged into is left out.
-- **Tabs named after their agents.** A tab running an agent takes the title the agent gives its terminal: Claude Code names it after the conversation's topic, so tab `1` becomes `Fix login redirect` and follows the topic as it changes. A tab you name yourself keeps your name (rename it to nothing to hand it back). Turn it off in the agents' sort menu: **Name tabs after agents**.
+- **Tabs named after their agents.** A tab running an agent takes the title the agent gives its terminal: Claude Code names it after the conversation's topic, so tab `1` becomes `Fix login redirect` and follows the topic as it changes. A tab you name yourself keeps your name (rename it to nothing to hand it back). Turn off **Name tabs after agents** in the **Agents** sort menu.
 - **Open files in your editor.** Right-click a file or folder in **Files**, or a changed file in **Changes**, to open it in Zed or VS Code, with the default app, or in Finder. The editor opens the file in its project's window. An editor that isn't installed shows as not installed.
-- **Everything else is Herdr's.** The spaces list is Herdr's own with project icons; the agents list adds icon badges and Servers; the status bar is Herdr's own with usage added. Files and Changes are Herdr's own with the right-click menu added.
+- **Based on Herdr's main layout.** The spaces and agents lists add icon badges. The status bar adds plan usage. Files and Changes add a right-click menu.
 
 ## Install
 

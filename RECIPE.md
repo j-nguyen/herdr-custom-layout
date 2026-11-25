@@ -1,6 +1,6 @@
 # Herdr Custom Layout
 
-This custom Herdr layout lists servers under the agents and shows plan usage in the status bar. Click a server to see its logs.
+This custom Herdr layout lets you switch between agents and servers in the sidebar. It shows plan usage in the status bar. Click a server to see its logs.
 
 ![Herdr Custom Layout](preview.png)
 
@@ -9,16 +9,16 @@ This custom Herdr layout lists servers under the agents and shows plan usage in 
 Left to right, top to bottom, as Herdr's `main`, except:
 
 - **Space icons**: `spaces-icons` preserves the spaces list behavior and replaces initials with 22px colored glyph badges selected from the space name. Compact rows show 20px badges with name tooltips. Agent logos sit in 24px badges (20px for sub-agents and the collapsed sidebar), with a generic agent glyph when a program has no icon.
-- **Servers, under the agent rows** in the Agents block, in the same scroll. A header like the Agents one: "Servers" in `dim` 11.5px medium, the count in `dim` 11px, a ↻ on the right (12px `dim`, `foreground` on hover). 16px above it, 5px below.
+- **Agents and Servers selector.** It stays above the scrolling list. The view starts on **Agents** and resets the scroll to the top on each switch. **Servers** shows a count in `dim` when the count is above zero. When **Servers** is open, a `blocked` dot on **Agents** marks **Needs you**. The sort button appears on **Agents** and ↻ appears on **Servers**.
 - **A port row** uses Herdr's terminal glyph. The first line shows the port and process. The second line shows the log file or terminal tab, followed by `local` or `network`.
-- **Group headers**, styled like the agents' space headers: 8px above, 30px tall, `dim` 11px medium, `foreground` on hover. Port rows go under a header per space, in the spaces' order (`Other` last, for a terminal with no space). Each Compose project gets its own header after them, with Herdr's layers icon 12px before the name and a tooltip `project  ~/its/folder` (home as `~`; deeper than three parts, `…/` and the last two). Clicking a header folds its group. Folded, it shows the count, a 7px `blocked` dot when a service is unhealthy, and a right chevron. Hovering a project header shows `logs` on its right (11px `muted`, `raised` on hover).
+- **Group headers** match the agents' space headers. Port rows follow the space order. Ports without a matching space appear in **Unassigned** after the named spaces. **Unassigned** starts folded and keeps its fold state when you switch lists. Each Compose project gets its own header with a layers icon and a tooltip that shows the project folder. Click a header to fold or unfold its group. Folded groups show their count and a right chevron. A folded group shows a `blocked` dot if a service is unhealthy. Hover a project header to see its **logs** button.
 - **A container row** shows a status dot, the service or container name, and its published TCP ports. The second line shows state and health. Standalone containers with published TCP ports share the **Docker** group. The tooltip shows the container name and status.
 - Hovering a row shows `:port ↗` on its right (11px `muted`, `raised` on hover).
 - The empty state explains which servers appear. A failed scan or a stopped Docker daemon shows its error in the list.
 - **Right-click menu** on a Files row (file or folder) and a Changes row, at the pointer, 240px wide, styled as Herdr's own right-click menu (`popover` background, 31px rows, 14px icons from `mods/workspace-chrome/` in `muted`): `Open in Zed`, `Open in VS Code` (`square-pen`); a divider; for a file `Open with default app` (`file-text`) and `Reveal in Finder` (`folder`), for a folder `Open in Finder` (on Linux: `Open containing folder`, `Open folder`). An editor that isn't installed is `dim` with `not installed` on the right. The picked row shows `opening…` until the command returns.
-- Sidebar folded to a rail: under the agents, a divider and one 26px cell per server with its port number, 10.5px `muted`, tooltip naming it.
+- **Collapsed sidebar.** Agent icons still scroll. A fixed **Servers** icon has a tooltip and expands the sidebar directly to **Servers**. The expand control sits below it.
 - **Tabs named after their agents**: an unnamed tab with an agent shows that agent's terminal title (its leading status glyph removed, at most 40 characters, `…` after), e.g. `Herdr-app AGENTS.md`.
-- The sort menu (the sort button right of "Agents") gains a divider and **Name tabs after agents**, checked when on; the popup is 220×186.
+- The sort button on **Agents** opens a 220×186 popup. The popup includes **Name tabs after agents** and shows a check when it is on.
 - **Usage in the status bar**, right-aligned before the palette hint: one “Left” label, then a compact group per agent with a `raised` background, 4px corners, 20px height, and 8px horizontal padding. Each group contains its 13px icon, name, and labeled percentages (`5h`, `Week`, per-model limits). Percentages use `ansi2`, `ansi3` under 50% left, and `ansi1` under 20%. Hover a percentage for usage and reset time, or the agent group for its plan or error details. Below 1000px, omit provider names but retain icons, limit labels, and all percentages. A ↻ refresh button follows the groups.
 - The status bar under 1500px wide drops the words (`97%`, no plan, `Codex` alone) and uses 28px bars; under 1150px it drops bars and reset times and colors the percentages instead.
 
@@ -28,10 +28,10 @@ Left to right, top to bottom, as Herdr's `main`, except:
 - Clicking a container row follows that container's output with `docker logs --follow --tail 200 <container-id>`. The mod starts each file or Docker log follower with `hc run --bg`, waits for Herdr to list it, then peeks at it. The label identifies the live terminal to reuse on the next click.
 - Clicking **logs** on a Compose project header peeks at an attached terminal for the whole project when available. Otherwise it runs `docker compose -p <project> logs -f --tail 200`.
 - `:port ↗` opens `http://localhost:<port>` with `xdg-open` (`open` on macOS, `start` on Windows) without peeking.
-- Servers rescan every 4 s; ↻ rescans now. Usage checks every 5 minutes; ↻ checks now; reset countdowns redraw each minute. Hovering a meter: `5h: 3% used, 97% left, resets in 4h 32m`.
+- Servers rescan every 4 s. Click ↻ in **Servers** to rescan now. Usage checks every 5 minutes. Click ↻ in the status bar to check now. Reset countdowns redraw each minute. Hover a meter to see usage and reset time.
 - Every 3 s, each tab's first agent (pane order) names it with `tab.rename {id, name}` when its title says something about the work: not empty, not a folder (`~`, `/`), not `user@host`, not the program's own name (`Claude Code`, `codex`). A name we gave is remembered (mod `localStorage` `autotitles`, tab id → name) and follows the title; a tab named anything else was named by a person and is never touched; renaming to "" makes it unnamed, so it is named again. The toggle is `shared("agents.autotitle")` (`false` = off).
 - Right-click opens `openOverlay({mod: "open-with", kind: "popup", width: 240, props: {path, dir, root}})`. `root` is the git top folder (Files: the pane's folder outside git). ↑/↓ move, Enter runs, Esc closes. An editor runs its CLI with `root` and the file, so it opens the file in that project's window. Default app: `open <path>` (`xdg-open`). Finder: `open -R <path>`, a folder `open <path>`. A failure posts an error notification. No menu for a space on another machine, a deleted file in Changes, or on Windows.
-- Agent states (working, blocked, done, idle) in the agent rows are Herdr's own, unchanged.
+- Agent rows show Herdr's states. The mod publishes the agent order for the next and previous agent commands even while **Servers** is open.
 - An agent with no saved login is left out of the bar; an expired login, HTTP error or network failure shows a short message in `blocked` for that agent.
 
 ## Built from
@@ -50,7 +50,6 @@ Left to right, top to bottom, as Herdr's `main`, except:
 ## Watch out
 
 - Herdr's shipped mods are read-only: clone them (`mod.clone`) and point a cloned layout at the clones; never edit `agents` or `workspace-status` in place.
-- A layout block can't size to its content, so a separate Servers block under Agents leaves a gap: drawing the servers inside the agents list is what puts them right under the last agent.
 - `ss` shows the owning process only for your own processes, and `docker-proxy` runs as root: Compose ports come from `docker ps`, never from `ss`.
 - An agent listens on a loopback port of its own (Claude Code does): skip agent processes by name or every agent shows up as a server.
 - `hc run` from a mod has no parent terminal; from an agent's shell it does, and the terminal shows under that agent as a sub-agent.
@@ -62,7 +61,8 @@ Left to right, top to bottom, as Herdr's `main`, except:
 ## Done when
 
 - `herdr-app check` passes for every mod and `herdr-app do layout.switch --name main-custom` shows the layout with no errors in `herdr-app status`.
-- `python3 -m http.server 3000` in a Herdr terminal shows `:3000 python3 http.server` with that terminal's space and tab within 4 seconds; clicking it peeks at its output; `:3000 ↗` opens the page; stopping it removes the row.
+- **Agents** opens first. Each list opens at the top and the selector stays visible. The **Servers** shortcut expands the rail straight to **Servers**.
+- `python3 -m http.server 3000` in a Herdr terminal shows `:3000 python3 http.server` in **Servers** within 4 seconds. The row shows the terminal's space and tab. Clicking the row peeks at its output. Clicking `:3000 ↗` opens the page. Stopping the server removes the row.
 - A Next.js worker appears when its parent carries the terminal ID. A Node server that redirects output to a file opens that file's live logs from its port row.
 - Compose and standalone containers open their own logs from their rows. A Compose project header opens all its services' logs. Clicking again reuses the live logs terminal.
 - Right-clicking a file in Files or Changes shows the menu at the pointer; `Open in VS Code` opens the file in the window of its git folder; `Reveal in Finder` selects it in Finder; an editor that isn't installed is dimmed and does nothing.

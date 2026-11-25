@@ -1,9 +1,9 @@
-// Modified from the agents mod that ships with Herdr (Apache License 2.0): adds the
-// Servers list (servers.js, scan.py) under the agents.
+// Modified from the agents mod that ships with Herdr (Apache License 2.0).
+// Adds a selector for the Agents and Servers lists.
 // Agents in grouped or priority views; parents take their most urgent sub-agent's place.
 
 import { View, div, image, svg } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
+import { v_flex, h_flex, ScrollHandle } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
 import { Servers } from "./servers.js";
 import { AutoTitle, AUTOTITLE_KEY, autotitleOn } from "./autotitle.js";
@@ -88,6 +88,9 @@ function agentBadge(p, t, size = 24) {
 export default class Agents extends View {
   init(_props, cx) {
     if (props()?.sortMenu) return;
+    this.activeList = "agents";
+    this.scroll = ScrollHandle.new();
+    this.railScroll = ScrollHandle.new();
     this.folded = new Set();
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
@@ -144,6 +147,70 @@ export default class Agents extends View {
 
   rank(a) {
     return RANK[a.status] ?? 0;
+  }
+
+  selectList(list, cx) {
+    this.activeList = list;
+    this.hovered = null;
+    this.servers.hovered = null;
+    this.scroll.scroll_to_item(0);
+    cx.notify();
+  }
+
+  selector(t, sort, needsYou) {
+    const serversActive = this.activeList === "servers";
+    const serverCount = this.servers.count();
+    const tab = (id, label) => {
+      const selected = this.activeList === id;
+      return h_flex().id(`sidebar-${id}`).h(24).flex_1().min_w(0).px(5).gap(4)
+        .items_center().justify_center().rounded(5).cursor_pointer()
+        .text_size(11.5).font_medium().text_color(selected ? t.foreground : t.muted)
+        .hover((s) => s.bg(t.hover))
+        .when(selected, (el) => el.bg(t.selected))
+        .on_click((_e, cx) => {
+          if (!selected) this.selectList(id, cx);
+        })
+        .child(div().min_w(0).truncate().child(label));
+    };
+
+    const agentsTab = tab("agents", "Agents").when(serversActive && needsYou, (el) => el
+      .tooltip("Needs you")
+      .child(div().size(6).flex_none().rounded(3).bg(t.blocked)));
+    const serversTab = tab("servers", "Servers").when(serverCount > 0, (el) => el
+      .child(div().flex_none().text_size(11).text_color(t.dim).child(String(serverCount))));
+
+    return h_flex().px(8).py(6).gap(6).flex_none().items_center()
+      .child(h_flex().flex_1().min_w(0).p(2).gap(2).rounded(7).bg(t.surface)
+        .child(agentsTab).child(serversTab))
+      .when(serversActive, (el) => el.child(this.servers.refreshButton(t)))
+      .when(!serversActive, (el) => el.child(
+        h_flex().id("ag-sort").size(24).flex_none().items_center().justify_center().rounded(5)
+          .text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+          .on_click(() => openOverlay({ mod: "agents-servers", kind: "popup", width: 220, height: 186, props: { sortMenu: true } }))
+          .tooltip(`Sort agents: ${sort.label}${autotitleOn() ? " · naming tabs after agents" : ""}`)
+          .child(svg(`mods/workspace-chrome/${sort.icon}.svg`).size(14))));
+  }
+
+  scrollArea(collapsed) {
+    return v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8)
+      .overflow_y_scrollbar().mode("always").track_scroll(collapsed ? this.railScroll : this.scroll);
+  }
+
+  railControls(t) {
+    return v_flex().flex_none().items_center()
+      .child(h_flex().id("sidebar-servers-shortcut").size(26).flex_none().items_center().justify_center()
+        .rounded(5).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .tooltip("Servers")
+        .on_click((_e, cx) => {
+          this.selectList("servers", cx);
+          toggleSidebar();
+        })
+        .child(svg("mods/workspace-chrome/server.svg").size(14)))
+      .child(h_flex().h(28).items_center().justify_center()
+        .child(div().id("collapse").text_size(13).text_color(t.dim)
+          .hover((s) => s.text_color(t.foreground))
+          .on_click(toggleSidebar)
+          .child("»")));
   }
 
   sortMenu(t) {
@@ -269,6 +336,13 @@ export default class Agents extends View {
     const rest = list.filter((a) => !a.pinned);
     list = [...pinned, ...rest];
     setAgentOrder(list.map((a) => a.address));
+
+    const root = v_flex().size_full().min_h(0).bg(t.chrome).border_t(1).border_color(t.border).text_size(13);
+    const scroll = this.scrollArea(collapsed);
+    if (!collapsed) root.child(this.selector(t, sort, list.some((a) => rankOf(a) === RANK.blocked)));
+    if (!collapsed && this.activeList === "servers") {
+      return root.child(scroll.children(this.servers.rows(t)));
+    }
 
     const withKids = (a, i) => {
       const subs = collapsed ? [] : this.tree(all, a.address);
@@ -439,56 +513,10 @@ export default class Agents extends View {
       ? list.flatMap(withKids)
       : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : g.members.flatMap(withKids))]);
 
-    return v_flex()
-      .size_full()
-      .min_h(0)
-      .bg(t.chrome)
-      .border_t(1)
-      .border_color(t.border)
-      .text_size(13)
-      .when(!collapsed, (el) =>
-        el.child(
-          h_flex()
-            .px(16)
-            .h(41)
-            .pt(14)
-            .pb(5)
-            .flex_none()
-            .items_center()
-            .justify_between()
-            .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents"))
-            .child(
-              div()
-                .id("ag-sort")
-                .text_size(11)
-                .text_color(t.dim)
-                .hover((s) => s.text_color(t.foreground))
-                .on_click(() => openOverlay({ mod: "agents-servers", kind: "popup", width: 220, height: 186, props: { sortMenu: true } }))
-                .tooltip(`Sort agents: ${sort.label}${autotitleOn() ? " · naming tabs after agents" : ""}`)
-                .child(svg(`mods/workspace-chrome/${sort.icon}.svg`).size(14)),
-            ),
-        ),
-      )
-      .when(list.length === 0 && !collapsed, (el) =>
-        el.child(div().px(12).text_size(12).text_color(t.dim).child("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not.")),
-      )
-      .child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8).overflow_y_scrollbar().mode("always").children(rows).children(this.servers.rows(t, collapsed)))
-      .when(collapsed, (el) =>
-        el.child(
-          h_flex()
-            .h(28)
-            .items_center()
-            .justify_center()
-            .child(
-              div()
-                .id("collapse")
-                .text_size(13)
-                .text_color(t.dim)
-                .hover((s) => s.text_color(t.foreground))
-                .on_click(toggleSidebar)
-                .child("»"),
-            ),
-        ),
-      );
+    return root.child(scroll
+      .when(list.length === 0 && !collapsed, (el) => el.child(div().px(4).flex_none().text_size(12).text_color(t.dim)
+        .child("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not.")))
+      .children(rows))
+      .when(collapsed, (el) => el.child(this.railControls(t)));
   }
 }

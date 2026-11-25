@@ -2,12 +2,13 @@ import { div, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { checking, exec, hc, run, appHome, home, terminals, spaces, panes, window } from "herdr";
 
-// List servers under the agents. Click a server to open its logs.
+// List servers and open their logs.
 
 const SCAN_MS = 4000;                 // ss + docker ps are cheap; servers come and go fast
 const LOG_TAIL_LINES = "200";
 const LOG_LABEL = "herdr.ports.logs";
 const PEEK_WAIT_MS = 3000;
+const UNASSIGNED_ID = "srv-sp-";
 
 // "~/code/app", or "…/code/app" for a deep folder.
 function shortPath(p) {
@@ -38,14 +39,14 @@ function hostLabel(hosts) {
   return hosts.every((h) => h === "127.0.0.1" || h === "::1" || h === "localhost") ? "local" : "network";
 }
 
-// Owned by the agents view: start(cx) from its init, rows(t, collapsed) inside its list.
+// The agents view starts scanning and displays the server rows.
 export class Servers {
   start(cx) {
     this.data = null;
     this.error = null;
     this.logsError = null;
     this.hovered = null;
-    this.folded = new Set();
+    this.folded = new Set([UNASSIGNED_ID]);
     this.scanning = false;
     this.opening = new Set();
     if (checking()) return;
@@ -97,7 +98,7 @@ export class Servers {
     if (known) return { id: known.space.id, name: known.space.name, order: known.space.index, tab: known.tab.name };
     const space = this.spaceList.find((s) => s.id === this.terms.get(address)?.labels?.["herdr.space"]);
     if (space) return { id: space.id, name: space.name, order: space.index, tab: this.where(address) };
-    return { id: "", name: "Other", order: Infinity, tab: this.where(address) };
+    return { id: "", name: "Unassigned", order: Infinity, tab: this.where(address) };
   }
 
   openBrowser(port) {
@@ -262,32 +263,23 @@ export class Servers {
         .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none()));
   }
 
-  // The section header, styled like the Agents header above it.
-  header(t, count) {
-    return h_flex().id("srv-header").px(8).pt(16).pb(5).flex_none().items_center().justify_between()
-      .child(h_flex().gap(6).items_center()
-        .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Servers"))
-        .when(count > 0, (el) => el.child(div().text_size(11).text_color(t.dim).child(String(count)))))
-      .child(div().id("srv-refresh").text_size(12).text_color(t.dim).hover((s) => s.text_color(t.foreground))
-        .tooltip("Scan again").on_click((_e, cx) => this.scan(cx)).child("↻"));
+  count() {
+    const { ports = [], compose = [], containers = [] } = this.data ?? {};
+    return ports.length + compose.length + containers.length;
   }
 
-  collapsedRows(ports, services, t) {
-    const portRows = ports.map((p) => ({ id: `srv-cp-${p.port}-${p.pid}`, port: p.port, tip: `${processLabel(p)} · ${this.where(p.terminal)}`, click: (cx) => this.showPort(p, cx) }));
-    const containerRows = services.map((s) => ({ id: `srv-cs-${s.container}`, port: s.ports[0]?.host ?? "·", tip: s.project ? `${s.project}/${s.service}` : s.container, click: (cx) => this.showService(s, cx) }));
-    const rows = [...portRows, ...containerRows].map((r) => div().id(r.id).h(26).flex_none().flex().items_center().justify_center().rounded(6)
-      .text_size(10.5).text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
-      .tooltip(r.tip).on_click((_e, cx) => r.click(cx)).child(String(r.port)));
-    return rows.length ? [div().mx(10).my(6).h(1).flex_none().bg(t.border), ...rows] : [];
+  refreshButton(t) {
+    return h_flex().id("srv-refresh").size(24).flex_none().items_center().justify_center().rounded(5)
+      .text_size(14).text_color(t.dim).cursor_pointer().hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .tooltip("Refresh servers").on_click((_e, cx) => this.scan(cx)).child("↻");
   }
 
-  rows(t, collapsed) {
+  rows(t) {
     this.snapshot();
     const ports = this.data?.ports ?? [];
     const services = [...(this.data?.compose ?? []), ...(this.data?.containers ?? [])];
-    if (collapsed) return this.collapsedRows(ports, services, t);
     const note = this.error ?? this.logsError ?? this.data?.docker_error ?? null;
-    const out = [this.header(t, ports.length + services.length)];
+    const out = [];
     if (note) out.push(div().px(8).pb(4).flex_none().text_size(11).text_color(t.blocked).truncate().tooltip(note).child(note));
     if (this.data && !ports.length && !services.length) {
       out.push(div().px(8).flex_none().text_size(12).text_color(t.dim)
